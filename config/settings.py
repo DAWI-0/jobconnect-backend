@@ -5,23 +5,24 @@ Django settings for config project.
 import os
 from pathlib import Path
 from datetime import timedelta
+
 from dotenv import load_dotenv
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables from .env
+BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
-# ==================== SECURITY ====================
+# ============================================================
+# SECURITY
+# ============================================================
 
 SECRET_KEY = os.getenv(
     "SECRET_KEY",
     "django-insecure-dev-only-change-me"
 )
 
-DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -33,12 +34,13 @@ ALLOWED_HOSTS = [
 ]
 
 
-# ==================== APPS ====================
+# ============================================================
+# APPLICATIONS
+# ============================================================
 
 INSTALLED_APPS = [
     "daphne",
 
-    # Django core
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -46,7 +48,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    # Third party
     "rest_framework",
     "rest_framework_simplejwt",
     "django_filters",
@@ -54,7 +55,6 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "channels",
 
-    # JobConnect apps
     "apps.accounts",
     "apps.companies",
     "apps.jobs",
@@ -67,7 +67,9 @@ INSTALLED_APPS = [
 AUTH_USER_MODEL = "accounts.User"
 
 
-# ==================== MIDDLEWARE ====================
+# ============================================================
+# MIDDLEWARE
+# ============================================================
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -81,7 +83,9 @@ MIDDLEWARE = [
 ]
 
 
-# ==================== URLS & TEMPLATES ====================
+# ============================================================
+# URLS / TEMPLATES / ASGI
+# ============================================================
 
 ROOT_URLCONF = "config.urls"
 
@@ -104,7 +108,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 
-# ==================== DATABASE ====================
+# ============================================================
+# DATABASE
+# ============================================================
 
 DATABASES = {
     "default": {
@@ -118,36 +124,82 @@ DATABASES = {
 }
 
 
-# ==================== REST FRAMEWORK ====================
+# ============================================================
+# PASSWORD VALIDATION
+# ============================================================
+
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        "NAME":
+            "django.contrib.auth.password_validation."
+            "UserAttributeSimilarityValidator",
+    },
+    {
+        "NAME":
+            "django.contrib.auth.password_validation."
+            "MinimumLengthValidator",
+    },
+    {
+        "NAME":
+            "django.contrib.auth.password_validation."
+            "CommonPasswordValidator",
+    },
+    {
+        "NAME":
+            "django.contrib.auth.password_validation."
+            "NumericPasswordValidator",
+    },
+]
+
+
+# ============================================================
+# INTERNATIONALIZATION
+# ============================================================
+
+LANGUAGE_CODE = "fr-fr"
+TIME_ZONE = "Europe/Paris"
+USE_I18N = True
+USE_TZ = True
+
+
+# ============================================================
+# STATIC / MEDIA
+# ============================================================
+
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+
+# ============================================================
+# REST FRAMEWORK
+# ============================================================
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
-
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
-
-    "DEFAULT_PAGINATION_CLASS": (
-        "rest_framework.pagination.PageNumberPagination"
-    ),
-
+    "DEFAULT_PAGINATION_CLASS":
+        "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
-
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
-
-    "DEFAULT_SCHEMA_CLASS": (
-        "drf_spectacular.openapi.AutoSchema"
-    ),
+    "DEFAULT_SCHEMA_CLASS":
+        "drf_spectacular.openapi.AutoSchema",
 }
 
 
-# ==================== JWT ====================
+# ============================================================
+# JWT
+# ============================================================
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
@@ -157,7 +209,9 @@ SIMPLE_JWT = {
 }
 
 
-# ==================== CORS ====================
+# ============================================================
+# CORS / CSRF
+# ============================================================
 
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
@@ -170,8 +224,19 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CSRF_TRUSTED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",")
+    if origin.strip()
+]
 
-# ==================== SPECTACULAR / SWAGGER ====================
+
+# ============================================================
+# SWAGGER
+# ============================================================
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "JobConnect API",
@@ -180,17 +245,12 @@ SPECTACULAR_SETTINGS = {
 }
 
 
-# ==================== CHANNELS / REDIS ====================
+# ============================================================
+# REDIS / CHANNELS
+# ============================================================
 
-REDIS_HOST = os.getenv(
-    "REDIS_HOST",
-    "127.0.0.1"
-)
-
-REDIS_PORT = os.getenv(
-    "REDIS_PORT",
-    "6379"
-)
+REDIS_HOST = os.getenv("REDIS_HOST", "127.0.0.1")
+REDIS_PORT = os.getenv("REDIS_PORT", "6379")
 
 CHANNEL_LAYERS = {
     "default": {
@@ -204,63 +264,15 @@ CHANNEL_LAYERS = {
 }
 
 
-# ==================== PASSWORD VALIDATORS ====================
-
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "UserAttributeSimilarityValidator"
-        ),
-    },
-    {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "MinimumLengthValidator"
-        ),
-    },
-    {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "CommonPasswordValidator"
-        ),
-    },
-    {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "NumericPasswordValidator"
-        ),
-    },
-]
-
-
-# ==================== INTERNATIONALIZATION ====================
-
-LANGUAGE_CODE = "fr-fr"
-
-TIME_ZONE = "Europe/Paris"
-
-USE_I18N = True
-
-USE_TZ = True
-
-
-# ==================== STATIC & MEDIA ====================
-
-STATIC_URL = "static/"
-
-STATIC_ROOT = BASE_DIR / "staticfiles"
-
-MEDIA_URL = "media/"
-
-MEDIA_ROOT = BASE_DIR / "media"
-
-
-# ==================== EMAIL ====================
+# ============================================================
+# EMAIL
+# ============================================================
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 
-# ==================== DEFAULT AUTO FIELD ====================
+# ============================================================
+# DEFAULT
+# ============================================================
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
