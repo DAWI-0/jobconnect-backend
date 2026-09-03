@@ -1,6 +1,3 @@
-from django.apps import AppConfig
+from django.test import TestCase
 
-
-class MessagingConfig(AppConfig):
-    default_auto_field = "django.db.models.BigAutoField"
-    name = "apps.messaging"
+# Create your tests here.

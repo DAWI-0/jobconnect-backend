@@ -1,7 +1,9 @@
+from django.db import IntegrityError
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
 
 from .models import Application
 from .serializers import (
@@ -45,7 +47,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         candidate = self.request.user.candidate_profile
-        serializer.save(candidate=candidate)
+        try:
+            serializer.save(candidate=candidate)
+        except IntegrityError:
+            raise ValidationError(
+                {"detail": "Vous avez déjà postulé à cette offre."}
+            )
 
     @action(detail=True, methods=["post"], permission_classes=[IsRecruiter])
     def update_status(self, request, pk=None):

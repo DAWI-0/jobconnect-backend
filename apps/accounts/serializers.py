@@ -1,9 +1,33 @@
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 
 from .models import CandidateProfile, RecruiterProfile
 
 User = get_user_model()
+
+
+# ============================================================
+# JWT LOGIN PAR EMAIL
+# ============================================================
+
+class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        email = attrs.get("email")
+        password = attrs.get("password")
+
+        if not email or not password:
+            raise serializers.ValidationError("Must include 'email' and 'password'.")
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError(
+                "No active account found with the given credentials"
+            )
+
+        attrs["username"] = user.username
+        return super().validate(attrs)
 
 
 # ============================================================
@@ -47,13 +71,20 @@ class UserCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "username",
         ]
 
     def create(self, validated_data):
-        user = User.objects.create_user(
-            **validated_data
-        )
-        return user
+        email = validated_data["email"]
+        base = email.split("@")[0]
+        username = base
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base}{counter}"
+            counter += 1
+
+        validated_data["username"] = username
+        return User.objects.create_user(**validated_data)
 
 
 # ============================================================
