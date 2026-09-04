@@ -20,11 +20,38 @@ class SkillViewSet(viewsets.ModelViewSet):
 
 
 class JobOfferViewSet(viewsets.ModelViewSet):
-    queryset = JobOffer.objects.select_related("company", "recruiter").prefetch_related("skills").all()
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["contract_type", "experience_level", "remote", "status", "company"]
-    search_fields = ["title", "description", "location"]
-    ordering_fields = ["created_at", "salary_min", "salary_max", "published_at"]
+    queryset = JobOffer.objects.select_related(
+        "company",
+        "recruiter"
+    ).prefetch_related("skills").all()
+
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter
+    ]
+
+    filterset_fields = [
+        "contract_type",
+        "experience_level",
+        "remote",
+        "status",
+        "company"
+    ]
+
+    search_fields = [
+        "title",
+        "description",
+        "location"
+    ]
+
+    ordering_fields = [
+        "created_at",
+        "salary_min",
+        "salary_max",
+        "published_at"
+    ]
+
     ordering = ["-created_at"]
 
     def get_serializer_class(self):
@@ -35,28 +62,59 @@ class JobOfferViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [AllowAny()]
+
         return [IsAuthenticated(), IsRecruiter()]
 
     def get_queryset(self):
         queryset = self.queryset
-        if not self.request.user.is_authenticated or self.request.user.role == "CANDIDATE":
-            queryset = queryset.filter(status="PUBLISHED")
-        return queryset
+        user = self.request.user
+
+        # Visiteur → offres publiées uniquement
+        if not user.is_authenticated:
+            return queryset.filter(status=JobOffer.Status.PUBLISHED)
+
+        # Candidate → offres publiées uniquement
+        if user.role == "CANDIDATE":
+            return queryset.filter(status=JobOffer.Status.PUBLISHED)
+
+        # Recruiter → ses propres offres uniquement
+        if user.role == "RECRUITER":
+            return queryset.filter(recruiter__user=user)
+
+        # Admin → toutes les offres
+        if user.role == "ADMIN":
+            return queryset
+
+        return queryset.none()
 
     def perform_create(self, serializer):
         recruiter = self.request.user.recruiter_profile
         serializer.save(recruiter=recruiter)
 
-    @action(detail=True, methods=["post"], permission_classes=[IsRecruiter])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsRecruiter]
+    )
     def publish(self, request, pk=None):
         job_offer = self.get_object()
         job_offer.status = JobOffer.Status.PUBLISHED
         job_offer.save()
-        return Response({"detail": "Offre publiée avec succès."})
 
-    @action(detail=True, methods=["post"], permission_classes=[IsRecruiter])
+        return Response({
+            "detail": "Offre publiée avec succès."
+        })
+
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsRecruiter]
+    )
     def close(self, request, pk=None):
         job_offer = self.get_object()
         job_offer.status = JobOffer.Status.CLOSED
         job_offer.save()
-        return Response({"detail": "Offre fermée."})
+
+        return Response({
+            "detail": "Offre fermée."
+        })  
