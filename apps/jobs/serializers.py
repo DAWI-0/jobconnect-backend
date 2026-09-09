@@ -1,39 +1,9 @@
-from rest_framework import serializers
-from .models import Skill, JobOffer
-
-
-# ============================================================
-# SKILL
-# ============================================================
-
-class SkillSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Skill
-        fields = [
-            "id",
-            "name",
-            "created_at",
-        ]
-        read_only_fields = [
-            "id",
-            "created_at",
-        ]
-
-
-# ============================================================
-# JOB OFFER
-# ============================================================
-
 from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Skill, JobOffer
 
 
-# ============================================================
-# SKILL
-# ============================================================
-
 class SkillSerializer(serializers.ModelSerializer):
     class Meta:
         model = Skill
@@ -47,10 +17,6 @@ class SkillSerializer(serializers.ModelSerializer):
             "created_at",
         ]
 
-
-# ============================================================
-# JOB OFFER
-# ============================================================
 
 class JobOfferSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(
@@ -63,17 +29,19 @@ class JobOfferSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    # Skills retournes en lecture
     skills = SkillSerializer(
         many=True,
         read_only=True
     )
 
+    # Skills envoyes par le frontend
     skill_ids = serializers.PrimaryKeyRelatedField(
         queryset=Skill.objects.all(),
         many=True,
         source="skills",
         write_only=True,
-        required=False,
+        required=False
     )
 
     class Meta:
@@ -82,13 +50,13 @@ class JobOfferSerializer(serializers.ModelSerializer):
         fields = [
             "id",
 
-            # Relations
+            # Company / Recruiter
             "company",
             "company_name",
             "recruiter",
             "recruiter_email",
 
-            # Informations
+            # Informations offre
             "title",
             "description",
             "location",
@@ -101,7 +69,7 @@ class JobOfferSerializer(serializers.ModelSerializer):
             "salary_min",
             "salary_max",
 
-            # Options
+            # Travail
             "remote",
 
             # Skills
@@ -120,68 +88,139 @@ class JobOfferSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             "id",
+
+            # Automatiques
+            "company",
             "company_name",
+            "recruiter",
             "recruiter_email",
+
+            # Automatique
             "skills",
             "published_at",
+
+            # Dates
             "created_at",
             "updated_at",
         ]
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+
+        # Verifier authentification
+        if not request or not request.user.is_authenticated:
+            raise serializers.ValidationError({
+                "detail": "Vous devez etre authentifie."
+            })
+
+        user = request.user
+
+        # Seul recruiter
+        if user.role != user.Role.RECRUITER:
+            raise serializers.ValidationError({
+                "detail": "Seul un recruteur peut creer une offre."
+            })
+
+        # En modification, verifier que l'offre appartient au recruiter
+        if self.instance:
+            if self.instance.recruiter.user_id != user.id:
+                raise serializers.ValidationError({
+                    "detail": "Vous ne pouvez pas modifier cette offre."
+                })
+
+        # Verifier salaire
+        salary_min = attrs.get("salary_min")
+        salary_max = attrs.get("salary_max")
+
+        if salary_min is not None and salary_max is not None:
+            if salary_min > salary_max:
+                raise serializers.ValidationError({
+                    "salary_max": "Le salaire maximum doit etre superieur au salaire minimum."
+                })
+
+        return attrs
+
     def create(self, validated_data):
-        """
-        Création d'une offre.
+        request = self.context["request"]
+        user = request.user
 
-        Si l'offre est créée directement avec le status PUBLISHED,
-        published_at est automatiquement défini.
-        """
+        # Recuperer le profil recruiter
+        try:
+            recruiter = user.recruiter_profile
+        except Exception:
+            raise serializers.ValidationError({
+                "recruiter": "Votre profil recruteur n'existe pas."
+            })
 
+        # Recuperer automatiquement la company
+        if not recruiter.company:
+            raise serializers.ValidationError({
+                "company": "Aucune entreprise n'est associee a votre profil recruteur."
+            })
+
+        company = recruiter.company
+
+        # IMPORTANT:
+        # skills est un ManyToMany.
+        # On doit le retirer avant JobOffer.objects.create()
+        skills = validated_data.pop("skills", [])
+
+        # Si l'offre est publiee directement
         if validated_data.get("status") == JobOffer.Status.PUBLISHED:
             validated_data["published_at"] = timezone.now()
 
-        return super().create(validated_data)
+        # Creation de l'offre
+        job = JobOffer.objects.create(
+            recruiter=recruiter,
+            company=company,
+            **validated_data
+        )
+
+        # Ajouter les skills apres creation
+        if skills:
+            job.skills.set(skills)
+
+        return job
 
     def update(self, instance, validated_data):
-        """
-        Mise à jour d'une offre.
+        # Impossible de modifier company/recruiter
+        validated_data.pop("company", None)
+        validated_data.pop("recruiter", None)
 
-        - DRAFT -> PUBLISHED :
-          published_at = maintenant
+        # Recuperer les skills
+        skills = validated_data.pop("skills", None)
 
-        - PUBLISHED -> DRAFT :
-          published_at = None
-
-        - PUBLISHED -> PUBLISHED :
-          on conserve la date originale.
-        """
-
+        # Nouveau status
         new_status = validated_data.get(
             "status",
             instance.status
         )
 
+        # Publication
         if (
             new_status == JobOffer.Status.PUBLISHED
             and instance.status != JobOffer.Status.PUBLISHED
         ):
             validated_data["published_at"] = timezone.now()
 
+        # Si on quitte Published
         elif new_status != JobOffer.Status.PUBLISHED:
             validated_data["published_at"] = None
 
-        return super().update(
+        # Update des champs normaux
+        instance = super().update(
             instance,
             validated_data
         )
 
+        # Update des skills
+        if skills is not None:
+            instance.skills.set(skills)
 
-# ============================================================
-# JOB OFFER LIST
-# ============================================================
+        return instance
+
 
 class JobOfferListSerializer(serializers.ModelSerializer):
-    """Version allégée pour les listes d'offres."""
-
     company_name = serializers.CharField(
         source="company.name",
         read_only=True
@@ -210,4 +249,3 @@ class JobOfferListSerializer(serializers.ModelSerializer):
             "published_at",
             "deadline",
         ]
-
