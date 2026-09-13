@@ -4,38 +4,78 @@ from rest_framework import serializers
 from .models import Skill, JobOffer
 
 
+# ============================================================
+# SKILL
+# ============================================================
+
 class SkillSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = Skill
+
         fields = [
             "id",
             "name",
             "created_at",
         ]
+
         read_only_fields = [
             "id",
             "created_at",
         ]
 
 
+# ============================================================
+# JOB OFFER
+# ============================================================
+
 class JobOfferSerializer(serializers.ModelSerializer):
+
     company_name = serializers.CharField(
         source="company.name",
         read_only=True
     )
+
+    # --------------------------------------------------------
+    # Recruiter information
+    # --------------------------------------------------------
+
+    recruiter_user_id = serializers.IntegerField(
+        source="recruiter.user.id",
+        read_only=True
+    )
+
+    recruiter_name = serializers.SerializerMethodField()
 
     recruiter_email = serializers.EmailField(
         source="recruiter.user.email",
         read_only=True
     )
 
-    # Skills retournes en lecture
+    recruiter_job_title = serializers.CharField(
+        source="recruiter.job_title",
+        read_only=True
+    )
+
+    recruiter_phone = serializers.CharField(
+        source="recruiter.phone",
+        read_only=True
+    )
+
+    recruiter_profile_picture = serializers.ImageField(
+        source="recruiter.profile_picture",
+        read_only=True
+    )
+
+    # --------------------------------------------------------
+    # Skills
+    # --------------------------------------------------------
+
     skills = SkillSerializer(
         many=True,
         read_only=True
     )
 
-    # Skills envoyes par le frontend
     skill_ids = serializers.PrimaryKeyRelatedField(
         queryset=Skill.objects.all(),
         many=True,
@@ -44,32 +84,59 @@ class JobOfferSerializer(serializers.ModelSerializer):
         required=False
     )
 
+    # --------------------------------------------------------
+    # Recruiter name
+    # --------------------------------------------------------
+
+    def get_recruiter_name(self, obj):
+
+        if not obj.recruiter or not obj.recruiter.user:
+            return ""
+
+        user = obj.recruiter.user
+
+        full_name = f"{user.first_name} {user.last_name}".strip()
+
+        return full_name or user.username or user.email
+
+    # ========================================================
+    # META
+    # ========================================================
+
     class Meta:
+
         model = JobOffer
 
         fields = [
             "id",
 
-            # Company / Recruiter
+            # Company
             "company",
             "company_name",
-            "recruiter",
-            "recruiter_email",
 
-            # Informations offre
+            # Recruiter
+            "recruiter",
+            "recruiter_user_id",
+            "recruiter_name",
+            "recruiter_email",
+            "recruiter_job_title",
+            "recruiter_phone",
+            "recruiter_profile_picture",
+
+            # Job
             "title",
             "description",
             "location",
 
-            # Contrat
+            # Contract
             "contract_type",
             "experience_level",
 
-            # Salaire
+            # Salary
             "salary_min",
             "salary_max",
 
-            # Travail
+            # Work mode
             "remote",
 
             # Skills
@@ -89,25 +156,32 @@ class JobOfferSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
 
-            # Automatiques
             "company",
             "company_name",
-            "recruiter",
-            "recruiter_email",
 
-            # Automatique
+            "recruiter",
+            "recruiter_user_id",
+            "recruiter_name",
+            "recruiter_email",
+            "recruiter_job_title",
+            "recruiter_phone",
+            "recruiter_profile_picture",
+
             "skills",
             "published_at",
 
-            # Dates
             "created_at",
             "updated_at",
         ]
 
+    # ========================================================
+    # VALIDATION
+    # ========================================================
+
     def validate(self, attrs):
+
         request = self.context.get("request")
 
-        # Verifier authentification
         if not request or not request.user.is_authenticated:
             raise serializers.ValidationError({
                 "detail": "Vous devez etre authentifie."
@@ -115,136 +189,272 @@ class JobOfferSerializer(serializers.ModelSerializer):
 
         user = request.user
 
-        # Seul recruiter
         if user.role != user.Role.RECRUITER:
             raise serializers.ValidationError({
                 "detail": "Seul un recruteur peut creer une offre."
             })
 
-        # En modification, verifier que l'offre appartient au recruiter
+        # ----------------------------------------------------
+        # Update ownership
+        # ----------------------------------------------------
+
         if self.instance:
-            if self.instance.recruiter.user_id != user.id:
+
+            if (
+                not self.instance.recruiter
+                or self.instance.recruiter.user_id != user.id
+            ):
                 raise serializers.ValidationError({
                     "detail": "Vous ne pouvez pas modifier cette offre."
                 })
 
-        # Verifier salaire
+        # ----------------------------------------------------
+        # Salary validation
+        # ----------------------------------------------------
+
         salary_min = attrs.get("salary_min")
         salary_max = attrs.get("salary_max")
 
         if salary_min is not None and salary_max is not None:
+
             if salary_min > salary_max:
                 raise serializers.ValidationError({
-                    "salary_max": "Le salaire maximum doit etre superieur au salaire minimum."
+                    "salary_max":
+                    "Le salaire maximum doit etre superieur au salaire minimum."
                 })
 
         return attrs
 
+    # ========================================================
+    # CREATE
+    # ========================================================
+
     def create(self, validated_data):
+
         request = self.context["request"]
         user = request.user
 
-        # Recuperer le profil recruiter
         try:
             recruiter = user.recruiter_profile
+
         except Exception:
             raise serializers.ValidationError({
-                "recruiter": "Votre profil recruteur n'existe pas."
+                "recruiter":
+                "Votre profil recruteur n'existe pas."
             })
 
-        # Recuperer automatiquement la company
         if not recruiter.company:
+
             raise serializers.ValidationError({
-                "company": "Aucune entreprise n'est associee a votre profil recruteur."
+                "company":
+                "Aucune entreprise n'est associee a votre profil recruteur."
             })
 
         company = recruiter.company
 
-        # IMPORTANT:
-        # skills est un ManyToMany.
-        # On doit le retirer avant JobOffer.objects.create()
-        skills = validated_data.pop("skills", [])
+        skills = validated_data.pop(
+            "skills",
+            []
+        )
 
-        # Si l'offre est publiee directement
+        # ----------------------------------------------------
+        # Published date
+        # ----------------------------------------------------
+
         if validated_data.get("status") == JobOffer.Status.PUBLISHED:
+
             validated_data["published_at"] = timezone.now()
 
-        # Creation de l'offre
+        # ----------------------------------------------------
+        # Create job
+        # ----------------------------------------------------
+
         job = JobOffer.objects.create(
             recruiter=recruiter,
             company=company,
             **validated_data
         )
 
-        # Ajouter les skills apres creation
+        # ----------------------------------------------------
+        # Skills
+        # ----------------------------------------------------
+
         if skills:
             job.skills.set(skills)
 
         return job
 
+    # ========================================================
+    # UPDATE
+    # ========================================================
+
     def update(self, instance, validated_data):
-        # Impossible de modifier company/recruiter
-        validated_data.pop("company", None)
-        validated_data.pop("recruiter", None)
 
-        # Recuperer les skills
-        skills = validated_data.pop("skills", None)
+        # Company and recruiter cannot be changed
+        validated_data.pop(
+            "company",
+            None
+        )
 
-        # Nouveau status
+        validated_data.pop(
+            "recruiter",
+            None
+        )
+
+        skills = validated_data.pop(
+            "skills",
+            None
+        )
+
         new_status = validated_data.get(
             "status",
             instance.status
         )
 
-        # Publication
+        # ----------------------------------------------------
+        # Published
+        # ----------------------------------------------------
+
         if (
             new_status == JobOffer.Status.PUBLISHED
             and instance.status != JobOffer.Status.PUBLISHED
         ):
+
             validated_data["published_at"] = timezone.now()
 
-        # Si on quitte Published
+        # ----------------------------------------------------
+        # Not published
+        # ----------------------------------------------------
+
         elif new_status != JobOffer.Status.PUBLISHED:
+
             validated_data["published_at"] = None
 
-        # Update des champs normaux
+        # ----------------------------------------------------
+        # Update job
+        # ----------------------------------------------------
+
         instance = super().update(
             instance,
             validated_data
         )
 
-        # Update des skills
+        # ----------------------------------------------------
+        # Update skills
+        # ----------------------------------------------------
+
         if skills is not None:
+
             instance.skills.set(skills)
 
         return instance
 
 
+# ============================================================
+# JOB OFFER LIST
+# ============================================================
+
 class JobOfferListSerializer(serializers.ModelSerializer):
+
     company_name = serializers.CharField(
         source="company.name",
         read_only=True
     )
+
+    # --------------------------------------------------------
+    # Recruiter information
+    # --------------------------------------------------------
+
+    recruiter_user_id = serializers.IntegerField(
+        source="recruiter.user.id",
+        read_only=True
+    )
+
+    recruiter_name = serializers.SerializerMethodField()
+
+    recruiter_email = serializers.EmailField(
+        source="recruiter.user.email",
+        read_only=True
+    )
+
+    recruiter_job_title = serializers.CharField(
+        source="recruiter.job_title",
+        read_only=True
+    )
+
+    recruiter_phone = serializers.CharField(
+        source="recruiter.phone",
+        read_only=True
+    )
+
+    recruiter_profile_picture = serializers.ImageField(
+        source="recruiter.profile_picture",
+        read_only=True
+    )
+
+    # --------------------------------------------------------
+    # Skills
+    # --------------------------------------------------------
 
     skills = SkillSerializer(
         many=True,
         read_only=True
     )
 
+    # --------------------------------------------------------
+    # Recruiter name
+    # --------------------------------------------------------
+
+    def get_recruiter_name(self, obj):
+
+        if not obj.recruiter or not obj.recruiter.user:
+            return ""
+
+        user = obj.recruiter.user
+
+        full_name = f"{user.first_name} {user.last_name}".strip()
+
+        return full_name or user.username or user.email
+
+    # ========================================================
+    # META
+    # ========================================================
+
     class Meta:
+
         model = JobOffer
 
         fields = [
             "id",
             "title",
+
+            # Company
             "company_name",
+
+            # Recruiter
+            "recruiter_user_id",
+            "recruiter_name",
+            "recruiter_email",
+            "recruiter_job_title",
+            "recruiter_phone",
+            "recruiter_profile_picture",
+
+            # Job information
             "location",
             "contract_type",
             "experience_level",
+
+            # Salary
             "salary_min",
             "salary_max",
+
+            # Work mode
             "remote",
+
+            # Skills
             "skills",
+
+            # Status
             "status",
             "published_at",
             "deadline",

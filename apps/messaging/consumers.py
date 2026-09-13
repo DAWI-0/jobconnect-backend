@@ -10,45 +10,58 @@ from .models import Conversation, Message
 class ChatConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
-        print(f"🔍 CONSUMER: user dans scope = {self.scope.get('user')}")
+        print(f"CONSUMER USER = {self.scope.get('user')}")
 
         self.conversation_id = self.scope["url_route"]["kwargs"]["conversation_id"]
         self.room_group_name = f"chat_{self.conversation_id}"
         self.user = self.scope.get("user")
 
-        # Vérification authentification
         if not self.user or self.user.is_anonymous:
-            print("🔍 CONSUMER: PAS D'UTILISATEUR → fermeture")
+            print("USER ANONYME")
             await self.close(code=4401)
             return
 
-        print(
-            f"🔍 CONSUMER: User = {self.user.email}, "
-            f"test participation..."
-        )
+        print(f"USER = {self.user.email}")
 
-        # Vérification participation à la conversation
         if not await self.is_participant():
-            print("🔍 CONSUMER: PAS PARTICIPANT → fermeture")
+            print("PAS PARTICIPANT")
             await self.close(code=4403)
             return
 
-        print("🔍 CONSUMER: ACCEPTÉ !")
-
-        await self.channel_layer.group_add(
-            self.room_group_name,
-            self.channel_name
-        )
+        print("PARTICIPANT OK")
 
         await self.accept()
 
-    async def disconnect(self, close_code):
-        print(f"🔌 CONSUMER: Déconnexion, code = {close_code}")
+        print("WEBSOCKET ACCEPT OK")
 
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
+        try:
+            await self.channel_layer.group_add(
+                self.room_group_name,
+                self.channel_name
+            )
+
+            print("GROUP_ADD OK")
+
+        except Exception as e:
+            print(
+                f"GROUP_ADD ERROR = {type(e).__name__}: {e}"
+            )
+
+    async def disconnect(self, close_code):
+        print(f"CONSUMER: Deconnexion, code = {close_code}")
+
+        try:
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
+
+            print("GROUP_DISCARD OK")
+
+        except Exception as e:
+            print(
+                f"GROUP_DISCARD ERROR = {type(e).__name__}: {e}"
+            )
 
     async def receive(self, text_data):
         try:

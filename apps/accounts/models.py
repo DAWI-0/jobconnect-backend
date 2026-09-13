@@ -34,9 +34,19 @@ class CandidateProfile(models.Model):
         related_name="candidate_profile",
     )
 
-    phone = models.CharField(max_length=30, blank=True)
-    location = models.CharField(max_length=255, blank=True)
-    bio = models.TextField(blank=True)
+    phone = models.CharField(
+        max_length=30,
+        blank=True,
+    )
+
+    location = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+
+    bio = models.TextField(
+        blank=True,
+    )
 
     cv = models.FileField(
         upload_to="cvs/",
@@ -55,13 +65,23 @@ class CandidateProfile(models.Model):
         blank=True,
     )
 
-    linkedin_url = models.URLField(blank=True,
-                                   null=True,)
-    github_url = models.URLField(blank=True,
-                                 null=True,)
+    linkedin_url = models.URLField(
+        blank=True,
+        null=True,
+    )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    github_url = models.URLField(
+        blank=True,
+        null=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
 
     def clean(self):
         if self.user.role != User.Role.CANDIDATE:
@@ -89,11 +109,29 @@ class RecruiterProfile(models.Model):
         related_name="recruiters",
     )
 
-    phone = models.CharField(max_length=30, blank=True)
-    job_title = models.CharField(max_length=150, blank=True)
+    profile_picture = models.ImageField(
+        upload_to="profiles/recruiters/",
+        null=True,
+        blank=True,
+    )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    phone = models.CharField(
+        max_length=30,
+        blank=True,
+    )
+
+    job_title = models.CharField(
+        max_length=150,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
 
     def clean(self):
         if self.user.role != User.Role.RECRUITER:

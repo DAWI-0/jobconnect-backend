@@ -1,8 +1,9 @@
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from django.contrib.auth import get_user_model
 
 from .models import CandidateProfile, RecruiterProfile
+
 
 User = get_user_model()
 
@@ -12,21 +13,26 @@ User = get_user_model()
 # ============================================================
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
+
     def validate(self, attrs):
         email = attrs.get("email")
         password = attrs.get("password")
 
         if not email or not password:
-            raise serializers.ValidationError("Must include 'email' and 'password'.")
+            raise serializers.ValidationError(
+                "Must include 'email' and 'password'."
+            )
 
         try:
             user = User.objects.get(email=email)
+
         except User.DoesNotExist:
             raise serializers.ValidationError(
                 "No active account found with the given credentials"
             )
 
         attrs["username"] = user.username
+
         return super().validate(attrs)
 
 
@@ -35,10 +41,12 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 # ============================================================
 
 class UserSerializer(serializers.ModelSerializer):
+
     profile_picture = serializers.SerializerMethodField()
 
     class Meta:
         model = User
+
         fields = [
             "id",
             "email",
@@ -49,44 +57,62 @@ class UserSerializer(serializers.ModelSerializer):
             "date_joined",
             "profile_picture",
         ]
+
         read_only_fields = [
             "id",
             "date_joined",
         ]
 
     def get_profile_picture(self, obj):
+
+        # Candidate
         try:
-            if obj.candidate_profile and obj.candidate_profile.profile_picture:
-                return obj.candidate_profile.profile_picture.url
-        except Exception:
+            profile = obj.candidate_profile
+
+            if profile.profile_picture:
+                return profile.profile_picture.url
+
+        except CandidateProfile.DoesNotExist:
             pass
+
+        # Recruiter
         try:
-            if obj.recruiter_profile and obj.recruiter_profile.profile_picture:
-                return obj.recruiter_profile.profile_picture.url
-        except Exception:
+            profile = obj.recruiter_profile
+
+            if profile.profile_picture:
+                return profile.profile_picture.url
+
+        except RecruiterProfile.DoesNotExist:
             pass
+
         return None
 
 
+# ============================================================
+# USER CREATE
+# ============================================================
+
 class UserCreateSerializer(serializers.ModelSerializer):
+
     password = serializers.CharField(
         write_only=True,
-        min_length=8
+        min_length=8,
     )
 
     company_name = serializers.CharField(
         write_only=True,
-        required=False
+        required=False,
     )
 
     company_description = serializers.CharField(
         write_only=True,
         required=False,
-        allow_blank=True
+        allow_blank=True,
     )
 
     class Meta:
         model = User
+
         fields = [
             "id",
             "email",
@@ -105,17 +131,18 @@ class UserCreateSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
+
         from django.db import transaction
         from apps.companies.models import Company
 
         company_name = validated_data.pop(
             "company_name",
-            ""
+            "",
         )
 
         company_description = validated_data.pop(
             "company_description",
-            ""
+            "",
         )
 
         email = validated_data["email"]
@@ -128,6 +155,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         while User.objects.filter(
             username=username
         ).exists():
+
             username = f"{base}{counter}"
             counter += 1
 
@@ -139,11 +167,19 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 **validated_data
             )
 
+            # ================================================
+            # CANDIDATE
+            # ================================================
+
             if user.role == User.Role.CANDIDATE:
 
                 CandidateProfile.objects.get_or_create(
                     user=user
                 )
+
+            # ================================================
+            # RECRUITER
+            # ================================================
 
             elif user.role == User.Role.RECRUITER:
 
@@ -156,27 +192,32 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 company = Company.objects.create(
                     name=company_name,
                     description=company_description,
-                    owner=user
+                    owner=user,
                 )
 
                 RecruiterProfile.objects.update_or_create(
                     user=user,
                     defaults={
-                        "company": company
-                    }
+                        "company": company,
+                    },
                 )
 
             return user
+
 
 # ============================================================
 # CANDIDATE PROFILE
 # ============================================================
 
 class CandidateProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
+
+    user = UserSerializer(
+        read_only=True
+    )
 
     class Meta:
         model = CandidateProfile
+
         fields = [
             "id",
             "user",
@@ -190,6 +231,7 @@ class CandidateProfileSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
         read_only_fields = [
             "id",
             "user",
@@ -197,13 +239,27 @@ class CandidateProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+
 class CandidateProfileListSerializer(serializers.ModelSerializer):
-    user_email = serializers.EmailField(source="user.email", read_only=True)
-    user_first_name = serializers.CharField(source="user.first_name", read_only=True)
-    user_last_name = serializers.CharField(source="user.last_name", read_only=True)
+
+    user_email = serializers.EmailField(
+        source="user.email",
+        read_only=True,
+    )
+
+    user_first_name = serializers.CharField(
+        source="user.first_name",
+        read_only=True,
+    )
+
+    user_last_name = serializers.CharField(
+        source="user.last_name",
+        read_only=True,
+    )
 
     class Meta:
         model = CandidateProfile
+
         fields = [
             "id",
             "user_email",
@@ -217,30 +273,37 @@ class CandidateProfileListSerializer(serializers.ModelSerializer):
             "profile_picture",
         ]
 
+
 # ============================================================
 # RECRUITER PROFILE
 # ============================================================
 
 class RecruiterProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
+
+    user = UserSerializer(
+        read_only=True
+    )
 
     company_name = serializers.CharField(
         source="company.name",
-        read_only=True
+        read_only=True,
     )
 
     class Meta:
         model = RecruiterProfile
+
         fields = [
             "id",
             "user",
             "company",
             "company_name",
+            "profile_picture",
             "phone",
             "job_title",
             "created_at",
             "updated_at",
         ]
+
         read_only_fields = [
             "id",
             "user",
@@ -250,21 +313,37 @@ class RecruiterProfileSerializer(serializers.ModelSerializer):
 
 
 class RecruiterProfileListSerializer(serializers.ModelSerializer):
+
     user_email = serializers.EmailField(
         source="user.email",
-        read_only=True
+        read_only=True,
+    )
+
+    user_first_name = serializers.CharField(
+        source="user.first_name",
+        read_only=True,
+    )
+
+    user_last_name = serializers.CharField(
+        source="user.last_name",
+        read_only=True,
     )
 
     company_name = serializers.CharField(
         source="company.name",
-        read_only=True
+        read_only=True,
     )
 
     class Meta:
         model = RecruiterProfile
+
         fields = [
             "id",
             "user_email",
+            "user_first_name",
+            "user_last_name",
             "company_name",
+            "profile_picture",
+            "phone",
             "job_title",
         ]

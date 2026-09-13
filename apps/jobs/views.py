@@ -24,12 +24,10 @@ class SkillViewSet(viewsets.ModelViewSet):
 
 
 class JobOfferViewSet(viewsets.ModelViewSet):
-    queryset = (
-        JobOffer.objects
-        .select_related("company", "recruiter")
-        .prefetch_related("skills")
-        .all()
-    )
+    queryset = JobOffer.objects.select_related(
+    "company",
+    "recruiter"
+).prefetch_related("skills").all()
 
     filter_backends = [
         DjangoFilterBackend,
