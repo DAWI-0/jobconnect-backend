@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "apps.messaging",
     "apps.notifications",
     "apps.favorites",
+    "seed",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
